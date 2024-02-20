@@ -153,6 +153,7 @@ where
             if !status.contains(StatusFlags::BUSY) {
                 break;
             }
+            self.delay.delay_ms(10);
         }
 
         // Check for CRC mismatch
