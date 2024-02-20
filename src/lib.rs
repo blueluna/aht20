@@ -19,19 +19,19 @@ use {
 const I2C_ADDRESS: u8 = 0x38;
 
 bitflags! {
-    struct StatusFlags: u8 {
+    /// AHT20 status
+    #[derive(Debug, Copy, Clone)]
+    pub struct StatusFlags: u8 {
+        /// Device is busy measuring
         const BUSY = (1 << 7);
-        const MODE = ((1 << 6) | (1 << 5));
-        const CRC = (1 << 4);
+        /// Device is calibrated
         const CALIBRATION_ENABLE = (1 << 3);
-        const FIFO_ENABLE = (1 << 2);
-        const FIFO_FULL = (1 << 1);
-        const FIFO_EMPTY = (1 << 0);
     }
 }
 
 /// AHT20 Error.
 #[derive(Debug, Copy, Clone)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum Error<I2CERR> {
     /// Device is not calibrated.
     Uncalibrated,
@@ -93,20 +93,14 @@ where
     D: DelayNs,
 {
     /// Creates a new AHT20 device from an I2C peripheral and a Delay.
-    pub fn new(i2c: I2C, delay: D) -> Result<Self, Error<I2C::Error>> {
-        let mut dev = Self { i2c, delay };
-
-        dev.reset()?;
-
-        dev.calibrate()?;
-
-        Ok(dev)
+    pub fn new(i2c: I2C, delay: D) -> Self {
+        Self { i2c, delay }
     }
 
     /// Gets the sensor status.
-    fn status(&mut self) -> Result<StatusFlags, I2C::Error> {
-        let buf = &mut [0u8; 1];
-        self.i2c.write_read(I2C_ADDRESS, &[0u8], buf)?;
+    pub fn status(&mut self) -> Result<StatusFlags, I2C::Error> {
+        let mut buf = [0u8; 1];
+        self.i2c.read(I2C_ADDRESS, &mut buf)?;
 
         Ok(StatusFlags::from_bits_retain(buf[0]))
     }
@@ -135,7 +129,11 @@ where
         self.i2c.write(I2C_ADDRESS, &[0xBA])?;
 
         // Wait 20ms as stated in specification
-        self.delay.delay_ms(20);
+        self.delay.delay_ms(100);
+        // Wait until not busy
+        while self.status()?.contains(StatusFlags::BUSY) {
+            self.delay.delay_ms(10);
+        }
 
         Ok(())
     }
@@ -143,16 +141,19 @@ where
     /// Reads humidity and temperature.
     pub fn read(&mut self) -> Result<(Humidity, Temperature), Error<I2C::Error>> {
         // Send trigger measurement command
-        self.i2c.write(I2C_ADDRESS, &[0xAC, 0x33, 0x00])?;
+        self.i2c.write(I2C_ADDRESS, &[0xac, 0x33, 0x00])?;
 
+        self.delay.delay_ms(80);
         // Wait until not busy
-        while self.status()?.contains(StatusFlags::BUSY) {
-            self.delay.delay_ms(10);
-        }
-
         // Read in sensor data
-        let buf = &mut [0u8; 7];
-        self.i2c.write_read(I2C_ADDRESS, &[0u8], buf)?;
+        let mut buf = [0u8; 7];
+        loop {
+            self.i2c.read(I2C_ADDRESS, &mut buf)?;
+            let status = StatusFlags::from_bits_retain(buf[0]);
+            if !status.contains(StatusFlags::BUSY) {
+                break;
+            }
+        }
 
         // Check for CRC mismatch
         let crc = &mut 0u8;

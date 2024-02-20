@@ -14,6 +14,11 @@ edition = "2021"
 embedded-hal = "1.0.0"
 bitflags = "2.4.2"
 crc_all = "0.2.2"
+defmt = { version = "0.3", optional = true }
 
 [dev-dependencies]
 linux-embedded-hal = "0.4.0"
+
+[features]
+default = []
+defmt = ["dep:defmt"]

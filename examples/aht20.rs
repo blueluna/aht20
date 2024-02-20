@@ -2,7 +2,7 @@
 
 use {
     aht20::*,
-    embedded_hal::blocking::delay::DelayMs,
+    embedded_hal::delay::DelayNs,
     linux_embedded_hal as hal,
     std::{env, process},
 };
@@ -16,7 +16,7 @@ fn main() {
 
     let i2c = hal::I2cdev::new(&args[1]).unwrap();
 
-    let mut dev = Aht20::new(i2c, hal::Delay).unwrap();
+    let mut dev = Aht20::new(i2c, hal::Delay);
 
     loop {
         let (h, t) = dev.read().unwrap();
@@ -27,6 +27,6 @@ fn main() {
             t.celsius()
         );
 
-        hal::Delay.delay_ms(1000u16);
+        hal::Delay.delay_ms(1000u32);
     }
 }
